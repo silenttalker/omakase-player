@@ -25,6 +25,7 @@
     <link rel="stylesheet" href="css/player.css" />
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@byomakase/omakase-player@0.11.0-SNAPSHOT.1731401150/dist/omakase-player.umd.min.js"></script>
+    <script src="https://unpkg.com/mediainfo.js"></script>
     <script src="js/index.js"></script>
   </head>
 
@@ -40,33 +41,69 @@
         <input type="text" id="videoUrl" placeholder="Enter video URL" />
         <button id="loadVideo">Load Video</button>
       </div>
-      <div class="player-with-timecode">
-        <div id="video-container" class="video-container">
-          <div id="omakase-player" class="omakase-player-div"></div>
-          <div id="controls" class="controls prevent-select">
-            <span id="back" class="icon"><img src="images/back.svg" alt="" height="12" /></span>
-            <span id="buttonPlay" class="icon">
-              <img id="playImage" src="images/play.svg" alt="" height="12" width="14" />
-            </span>
-            <span id="buttonPause" class="icon" style="display: none">
-              <img id="pauseImage" src="images/pause.svg" alt="" height="12" width="14" />
-            </span>
-            <span id="forward" class="icon"><img src="images/forward.svg" alt="" height="12" /></span>
+      <div class="player-and-info">
+        <div class="player-with-timecode">
+          <div id="video-container" class="video-container">
+            <div id="omakase-player" class="omakase-player-div">
+              <div id="video-scrubber" class="video-scrubber">
+                <div class="scrubber-progress">
+                  <div class="scrubber-bar"></div>
+                  <div class="scrubber-handle"></div>
+                </div>
+                <div class="scrubber-time">00:00 / 00:00</div>
+              </div>
+            </div>
+            <div id="controls" class="controls prevent-select">
+              <span id="back" class="icon"><img src="images/back.svg" alt="" height="12" /></span>
+              <span id="buttonPlay" class="icon">
+                <img id="playImage" src="images/play.svg" alt="" height="12" width="14" />
+              </span>
+              <span id="buttonPause" class="icon" style="display: none">
+                <img id="pauseImage" src="images/pause.svg" alt="" height="12" width="14" />
+              </span>
+              <span id="forward" class="icon"><img src="images/forward.svg" alt="" height="12" /></span>
+            </div>
+          </div>
+          <div id="timecode-display" class="timecode-display">
+            <div class="timecode-row">
+              <span class="timecode-label">Timecode:</span>
+              <span id="inputTimestampFormatted" class="timecode-value">00:00:00:00</span>
+            </div>
+            <div class="timecode-row">
+              <span class="timecode-label">Frame:</span>
+              <span id="inputFrameSeek" class="timecode-value">0</span>
+            </div>
+            <div class="timecode-row">
+              <span class="timecode-label">Time (s):</span>
+              <span id="inputTimestamp" class="timecode-value">0.000</span>
+            </div>
           </div>
         </div>
-        <div id="timecode-display" class="timecode-display">
-          <div class="timecode-row">
-            <span class="timecode-label">Timecode:</span>
-            <span id="inputTimestampFormatted" class="timecode-value">00:00:00:00</span>
+        <div class="media-info">
+          <div class="media-info-header">Media Information</div>
+          <div class="media-info-content">
+            <div class="info-section video-streams">
+              <div class="section-header">
+                <span class="section-title">Video Streams</span>
+                <span class="stream-count">(0 streams)</span>
+              </div>
+              <div class="streams-container"></div>
+            </div>
+            <div class="info-section audio-streams">
+              <div class="section-header">
+                <span class="section-title">Audio Streams</span>
+                <span class="stream-count">(0 streams)</span>
+              </div>
+              <div class="streams-container"></div>
+            </div>
           </div>
-          <div class="timecode-row">
-            <span class="timecode-label">Frame:</span>
-            <span id="inputFrameSeek" class="timecode-value">0</span>
+        </div>
+        <div class="mediainfo-xml">
+          <div class="mediainfo-header">
+            <span>MediaInfo XML Output</span>
+            <button id="copyMediaInfo" class="copy-button">Copy</button>
           </div>
-          <div class="timecode-row">
-            <span class="timecode-label">Time (s):</span>
-            <span id="inputTimestamp" class="timecode-value">0.000</span>
-          </div>
+          <pre id="mediainfo-output" class="mediainfo-content">Waiting for media analysis...</pre>
         </div>
       </div>
     </div>

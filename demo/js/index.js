@@ -263,7 +263,7 @@ function createOmakaseTimeline() {
 }
 
 function initializeOmakaseTimeline() {
-  omakasePlayer.timeline.onReady$.subscribe(() => {
+  omakasePlayer.timeline.onReady$.subscribe(async () => {
     omakasePlayer.timeline.getScrubberLane().style = {
       backgroundFill: '#EDEFEE',
       leftBackgroundFill: '#E4E5E5',
@@ -1107,6 +1107,13 @@ function initializeOmakaseTimeline() {
 
     // Listening for embedded subtitles load
     processSubtitles();
+
+    // Update media info display
+    const videoElement = document.querySelector('.omakase-video');
+    if (videoElement) {
+      await updateMediaInfo(videoElement);
+      initializeStreamInfoExpansion();
+    }
   });
 
   initializePlayerControlButtons();
@@ -1362,6 +1369,295 @@ function initializePlayerEventListeners() {
 
       let buttonPlay = domHelper.getById('buttonPlay');
       domHelper.setStyle(buttonPlay, {display: 'inline'});
+    });
+  });
+
+  omakasePlayer.on(omakasePlayer.EVENTS.OMAKASE_VIDEO_LOADED, async (event) => {
+    console.debug('Video Loaded', event);
+  
+    if (!event) return;
+  
+    // Wait a short moment for video element to be fully initialized
+    setTimeout(async () => {
+      const videoElement = document.querySelector('.omakase-video');
+      if (videoElement) {
+        // Initialize media info display
+        await updateMediaInfo(videoElement);
+        
+        // Add click handlers for stream info expansion
+        initializeStreamInfoExpansion();
+      }
+    }, 500);
+  });
+
+  // Initialize scrubber
+  // Initialize scrubber after a short delay to ensure DOM elements are ready
+  setTimeout(() => {
+    initializeScrubber();
+  }, 100);
+}
+
+async function updateMediaInfo(videoElement) {
+  const mediaData = await getMediaInfo(videoElement.src);
+  
+  if (mediaData) {
+    updateVideoStreamDisplay(mediaData.video);
+    updateAudioStreamDisplay(mediaData.audio);
+  } else {
+    // Fallback to basic HTML5 video properties if MediaInfo fails
+    const videoInfo = {
+      codec: videoElement.videoTracks?.[0]?.label || 'Unknown',
+      width: videoElement.videoWidth,
+      height: videoElement.videoHeight,
+      frameRate: omakasePlayer.video.getFrameRate(),
+      duration: videoElement.duration,
+      bitrate: await estimateVideoBitrate(videoElement)
+    };
+    const audioInfo = videoElement.audioTracks?.map(track => ({
+      codec: track.label || 'Unknown',
+      channels: track.language || 'Unknown',
+      bitrate: '128 kbps',
+      sampleRate: '48000 Hz'
+    })) || [];
+    
+    updateVideoStreamDisplay([videoInfo]);
+    updateAudioStreamDisplay(audioInfo);
+  }
+}
+
+async function getMediaInfo(url) {
+  try {
+    const mediaInfo = await loadMediaInfoJs();
+    if (!mediaInfo) {
+      throw new Error('MediaInfo.js failed to load');
+    }
+
+    // For HLS streams, we need to fetch the first segment
+    if (url.includes('.m3u8')) {
+      const m3u8Response = await fetch(url);
+      const m3u8Text = await m3u8Response.text();
+      
+      // Parse m3u8 to get first segment URL
+      const lines = m3u8Text.split('\n');
+      const segmentUrl = lines.find(line => line.includes('.ts'));
+      if (!segmentUrl) {
+        throw new Error('No segments found in HLS stream');
+      }
+
+      // Convert relative URL to absolute
+      const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
+      url = baseUrl + segmentUrl;
+    }
+
+    // Fetch the media file
+    const response = await fetch(url);
+    const buffer = await response.arrayBuffer();
+    const uint8Array = new Uint8Array(buffer);
+
+    // Analyze with MediaInfo
+    const result = await mediaInfo.analyzeData(
+      () => uint8Array.length,
+      (size, offset) => uint8Array.slice(offset, offset + size)
+    );
+
+    // Update the XML display immediately
+    updateMediaInfoXML(result);
+    
+    // Parse the result for stream info
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(result, 'text/xml');
+    const tracks = {
+      video: [],
+      audio: []
+    };
+    
+    // Parse video tracks
+    xmlDoc.querySelectorAll('track[type="Video"]').forEach(track => {
+      const videoTrack = {};
+      track.childNodes.forEach(node => {
+        if (node.nodeType === 1) { // Element nodes only
+          videoTrack[node.nodeName.toLowerCase()] = node.textContent;
+        }
+      });
+      tracks.video.push(videoTrack);
+    });
+    
+    // Parse audio tracks
+    xmlDoc.querySelectorAll('track[type="Audio"]').forEach(track => {
+      const audioTrack = {};
+      track.childNodes.forEach(node => {
+        if (node.nodeType === 1) { // Element nodes only
+          audioTrack[node.nodeName.toLowerCase()] = node.textContent;
+        }
+      });
+      tracks.audio.push(audioTrack);
+    });
+    
+    return tracks;
+  } catch (e) {
+    console.error('MediaInfo analysis failed:', e);
+    document.getElementById('mediainfo-output').textContent = 
+      `MediaInfo analysis failed: ${e.message}\nTrying fallback method...`;
+    return null;
+  } finally {
+    if (mediaInfo) {
+      mediaInfo.close();
+    }
+  }
+}
+
+async function loadMediaInfoJs() {
+  try {
+    const MediaInfoModule = await import('https://unpkg.com/mediainfo.js');
+    return await MediaInfoModule.default({
+      format: 'XML',
+      locateFile: (path) => `https://unpkg.com/mediainfo.js/dist/${path}`
+    });
+  } catch (error) {
+    console.error('Failed to load MediaInfo.js:', error);
+    return null;
+  }
+}
+
+function updateMediaInfoXML(mediaInfoXML) {
+  const output = document.getElementById('mediainfo-output');
+  if (!output) return;
+  
+  if (!mediaInfoXML) {
+    output.textContent = 'No MediaInfo data available';
+    return;
+  }
+
+  try {
+    // Pretty print the XML
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(mediaInfoXML, 'text/xml');
+    const serializer = new XMLSerializer();
+    const prettyXML = serializer.serializeToString(xmlDoc)
+      .replace(/>/g, '>\n')
+      .replace(/\n\s*\n/g, '\n')
+      .replace(/\n/g, '\n  ');
+    
+    output.textContent = prettyXML;
+    
+    // Initialize copy button
+    const copyButton = document.getElementById('copyMediaInfo');
+    if (copyButton) {
+      copyButton.onclick = () => {
+        navigator.clipboard.writeText(prettyXML)
+          .then(() => {
+            copyButton.textContent = 'Copied!';
+            setTimeout(() => {
+              copyButton.textContent = 'Copy';
+            }, 2000);
+          })
+          .catch(err => console.error('Failed to copy:', err));
+      };
+    }
+  } catch (e) {
+    console.error('Failed to format MediaInfo XML:', e);
+    output.textContent = mediaInfoXML; // Fallback to raw output
+  }
+}
+
+function updateVideoStreamDisplay(streams) {
+  const container = document.querySelector('.video-streams .streams-container');
+  const count = document.querySelector('.video-streams .stream-count');
+  
+  if (!container || !count) return;
+  
+  count.textContent = `(${streams.length} stream${streams.length !== 1 ? 's' : ''})`;
+  
+  container.innerHTML = streams.map((stream, index) => `
+    <div class="stream-item">
+      <div class="stream-header">
+        <div class="stream-title">
+          <span>Video Stream ${index + 1}</span>
+        </div>
+        <div class="stream-expand expanded">▼</div>
+      </div>
+      <div class="stream-details expanded">
+        ${Object.entries(stream)
+          .filter(([key]) => key !== 'type')
+          .map(([key, value]) => `
+            <div class="detail-row">
+              <span class="detail-label">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</span>
+              <span>${value}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+function updateAudioStreamDisplay(streams) {
+  const container = document.querySelector('.audio-streams .streams-container');
+  const count = document.querySelector('.audio-streams .stream-count');
+  
+  if (!container || !count) return;
+  
+  count.textContent = `(${streams.length} stream${streams.length !== 1 ? 's' : ''})`;
+  
+  container.innerHTML = streams.map((stream, index) => `
+    <div class="stream-item">
+      <div class="stream-header">
+        <div class="stream-title">
+          <span>Audio Stream ${index + 1}</span>
+        </div>
+        <div class="stream-expand expanded">▼</div>
+      </div>
+      <div class="stream-details expanded">
+        ${Object.entries(stream)
+          .filter(([key]) => key !== 'type')
+          .map(([key, value]) => `
+            <div class="detail-row">
+              <span class="detail-label">${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</span>
+              <span>${value}</span>
+            </div>
+          `).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+async function estimateVideoBitrate(videoElement) {
+  // This is a rough estimate based on file size and duration
+  try {
+    const response = await fetch(videoElement.src, { method: 'HEAD' });
+    const size = response.headers.get('content-length');
+    if (size && videoElement.duration) {
+      // Calculate bitrate in Mbps
+      const bitrate = (size * 8) / (videoElement.duration * 1000000);
+      return bitrate.toFixed(2) + ' Mbps';
+    }
+  } catch (e) {
+    console.warn('Could not estimate video bitrate:', e);
+  }
+  return 'Unknown';
+}
+
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function initializeStreamInfoExpansion() {
+  const headers = document.querySelectorAll('.stream-header');
+  headers.forEach(header => {
+    header.addEventListener('click', () => {
+      const details = header.nextElementSibling;
+      const arrow = header.querySelector('.stream-expand');
+      if (details && arrow) {
+        details.classList.toggle('expanded');
+        arrow.classList.toggle('expanded');
+        // Start expanded by default
+        if (!details.classList.contains('expanded')) {
+          details.classList.add('expanded');
+          arrow.classList.add('expanded');
+        }
+      }
     });
   });
 }
@@ -2060,4 +2356,107 @@ function initializeSizeControls() {
 
   // Set initial size to small
   buttons[0].click();
+}
+
+function initializeScrubber() {
+  const scrubber = document.querySelector('.video-scrubber');
+  const progress = document.querySelector('.scrubber-progress');
+  const bar = document.querySelector('.scrubber-bar');
+  const handle = document.querySelector('.scrubber-handle');
+  const timeDisplay = document.querySelector('.scrubber-time');
+
+  // Check if all required elements exist
+  if (!scrubber || !progress || !bar || !handle || !timeDisplay) {
+    console.warn('Scrubber elements not found, retrying in 100ms...');
+    setTimeout(initializeScrubber, 100);
+    return;
+  }
+
+  let isDragging = false;
+  let fadeTimeout;
+
+  // Update progress bar and timecode display
+  omakasePlayer.on(omakasePlayer.EVENTS.OMAKASE_VIDEO_TIME_CHANGE, (event) => {
+    if (!isDragging) {
+      const duration = omakasePlayer.video.getDuration();
+      const percent = (event.currentTime / duration) * 100;
+      updateScrubber(percent);
+      updateTimecodeDisplay(event.frame, omakasePlayer.video.getVideo().totalFrames);
+    }
+    
+    // Reset fade timeout
+    clearTimeout(fadeTimeout);
+    scrubber.classList.remove('fade-out');
+    scrubber.style.opacity = '1';
+    
+    // Set new fade timeout only when playing
+    if (omakasePlayer.video.isPlaying()) {
+      fadeTimeout = setTimeout(() => {
+        scrubber.classList.add('fade-out');
+      }, 2000);
+    }
+  });
+
+  // Handle click on progress bar
+  progress.addEventListener('click', (e) => {
+    const rect = progress.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const frame = Math.round(omakasePlayer.video.getVideo().totalFrames * percent);
+    omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
+  });
+
+  // Handle drag interactions
+  handle.addEventListener('mousedown', () => {
+    isDragging = true;
+    handle.style.cursor = 'grabbing';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+      const rect = progress.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const frame = Math.round(omakasePlayer.video.getVideo().totalFrames * percent);
+      updateScrubber(percent * 100);
+      updateTimecodeDisplay(frame, omakasePlayer.video.getVideo().totalFrames);
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      handle.style.cursor = 'grab';
+      const percent = parseFloat(bar.style.width) / 100;
+      const frame = Math.round(omakasePlayer.video.getVideo().totalFrames * percent);
+      omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
+    }
+  });
+}
+
+function updateScrubber(percent) {
+  const bar = document.querySelector('.scrubber-bar');
+  const handle = document.querySelector('.scrubber-handle');
+  
+  bar.style.width = `${percent}%`;
+  handle.style.left = `${percent}%`;
+}
+
+function updateTimecodeDisplay(currentFrame, totalFrames) {
+  const timeDisplay = document.querySelector('.scrubber-time');
+  const fps = omakasePlayer.video.getFrameRate();
+  
+  // Convert to timecode
+  const currentTimecode = frameToTimecode(currentFrame, fps);
+  const totalTimecode = frameToTimecode(totalFrames, fps);
+  
+  timeDisplay.textContent = `${currentTimecode} / ${totalTimecode}`;
+}
+
+function frameToTimecode(frame, fps) {
+  const totalSeconds = frame / fps;
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+  const frames = Math.floor((frame % fps));
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
 }
