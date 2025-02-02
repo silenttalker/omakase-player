@@ -20,8 +20,18 @@
   padding: 0;
 }
 
+/* Update the root and body styles */
+:root {
+  --bg-primary: #1a1a1a;
+  --bg-secondary: #242424;
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+}
+
 body {
   min-width: 1385px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
 }
 
 .video {
@@ -29,11 +39,37 @@ body {
   height: 450px;
 }
 
+/* Add new container for player and timecode */
+.player-with-timecode {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+/* Update video container styles */
 .video-container {
   width: 700px;
   height: 394px;
   float: left;
   background-color: #000;
+  transition: all 0.3s ease;
+  border-radius: 6px;
+  /* Remove overflow: hidden */
+}
+
+.video-container.small {
+  width: 700px;
+  height: 394px;
+}
+
+.video-container.medium {
+  width: 1050px;
+  height: 591px;
+}
+
+.video-container.large {
+  width: 1400px;
+  height: 788px;
 }
 
 .meter {
@@ -62,14 +98,6 @@ body {
 
 .vu-label-surround {
   display: inline-block;
-}
-
-.player-stats {
-  width: 360px;
-  height: 465px;
-  display: inline-block;
-  font-size: 14px;
-  padding-left: 100px;
 }
 
 .marker-list-empty {
@@ -134,9 +162,7 @@ body {
   height: 24px;
   line-height: 26px;
   padding-left: 10px;
-  border-bottom: 2px solid #235067;
-  border-left: 2px solid #235067;
-  border-right: 2px solid #235067;
+  border: 2px solid #235067;
   /* border-bottom-left-radius: 5px; */
   /* border-bottom-right-radius: 5px; */
 }
@@ -149,22 +175,51 @@ body {
   right: 30px;
 }
 
+/* Update controls styling */
 .controls {
-  background-color: #235067;
-  width: 700px;
-  height: 30px;
-  margin-top: 0px;
-  margin-bottom: 40px;
-  border-bottom-left-radius: 5px;
-  border-bottom-right-radius: 5px;
+  background-color: rgba(26, 26, 26, 0.95);
+  width: 100% !important;
+  height: 40px; /* Increase height */
+  margin-top: -6px; /* Pull up slightly to overlap */
+  padding: 0 10px; /* Add some padding */
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
   float: left;
   cursor: default;
+  transition: all 0.3s ease;
+  display: flex; /* Use flexbox */
+  align-items: center; /* Center items vertically */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-sizing: border-box; /* Add this to include padding in width calculation */
 }
 
+.controls.small {
+  width: 700px;
+}
+
+.controls.medium {
+  width: 1050px;
+}
+
+.controls.large {
+  width: 1400px;
+}
+
+/* Update icon styling */
 .icon {
-  padding: 10px;
-  line-height: 32px;
+  padding: 8px;
   cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.icon:hover {
+  opacity: 1;
+}
+
+/* Update button images to be more visible */
+.icon img {
+  filter: brightness(1.2); /* Make icons slightly brighter */
 }
 
 .toggle {
@@ -218,6 +273,8 @@ body {
   position: relative;
   width: 700px;
   height: 394px;
+  width: 100% !important;
+  height: 100% !important;
 
   .omakase-video-safe-zone-wrapper {
     position: absolute;
@@ -244,12 +301,17 @@ body {
 
 .omakase-player-div {
   height: 394px;
+  width: 100% !important;
+  height: 100% !important;
+  background-color: #000; /* Solid black background instead of spinner */
 }
 
 .omakase-player .omakase-player-wrapper .omakase-video {
   display: block;
   width: 100%;
   opacity: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .omakase-player .omakase-player-wrapper .omakase-video-controls .omakase-overlay-buttons .omakase-video-overlay-button {
@@ -279,8 +341,7 @@ body {
 }
 
 .omakase-player .omakase-player-wrapper .omakase-video-controls .omakase-overlay-buttons .omakase-button-loading {
-  background-image: url(../images/o-loading.svg);
-  animation: loading 3s linear infinite;
+  display: none; /* Hide the loading spinner */
 }
 
 @keyframes loading {
@@ -392,6 +453,43 @@ body {
 
 .content {
   margin: 10px;
+  padding: 20px;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.url-input {
+  margin-bottom: 10px;
+}
+
+.url-input input {
+  background-color: #333333;
+  border: 1px solid #444444;
+  color: var(--text-primary);
+  border-radius: 4px;
+  width: 600px; /* Increased from 300px */
+  padding: 8px;
+}
+
+.url-input input:focus {
+  outline: none;
+  border-color: #4a90e2;
+}
+
+.url-input button {
+  background-color: #4a90e2;
+  border: none;
+  color: white;
+  padding: 8px 15px;
+  border-radius: 4px;
+  margin-left: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.url-input button:hover {
+  background-color: #357abd;
 }
 
 .timeline {
@@ -529,4 +627,63 @@ body {
 
 .legend-box-text {
   padding-left: 10px;
+}
+
+/* Add these styles */
+.timecode-display {
+  position: static; /* Remove absolute positioning */
+  flex-shrink: 0; /* Prevent shrinking */
+  background-color: rgba(26, 26, 26, 0.95);
+  border: 1px solid #444444;
+  padding: 15px;
+  border-radius: 6px;
+  color: white;
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.timecode-row {
+  margin: 5px 0;
+  user-select: all; /* Makes the text selectable */
+}
+
+.timecode-label {
+  display: inline-block;
+  width: 100px;
+  color: #4a90e2;
+}
+
+.timecode-value {
+  font-weight: bold;
+}
+
+/* Add new styles for size controls */
+.size-controls {
+  margin-bottom: 15px;
+}
+
+.size-button {
+  background-color: #333333;
+  color: var(--text-primary);
+  border: 1px solid #444444;
+  padding: 8px 20px;
+  margin-right: 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.size-button:hover {
+  background-color: #404040;
+}
+
+.size-button.active {
+  background-color: #4a90e2;
+  border-color: #4a90e2;
+  font-weight: bold;
+}
+
+/* Remove the old player-stats styles */
+.player-stats {
+  display: none;
 }

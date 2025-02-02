@@ -77,30 +77,102 @@ let urls = [
   },
 ];
 
-detectBrowser();
-
-window.addEventListener('load', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Create player first
   createOmakasePlayer();
-  loadOmakaseVideo(urls[urlSelector].video, urls[urlSelector].frameRate);
-  omakasePlayer.video.onVideoLoaded$.subscribe((event) => {
-    if (event) {
-      createOmakaseTimeline();
-    }
-  });
+  initializePlayerEventListeners();
+  initializePlayerControlButtons();
 
-  if (urls.length > 1) {
-    createDropdownMenu();
+  // Add URL input handling
+  const loadButton = document.getElementById('loadVideo');
+  if (loadButton) {
+    loadButton.addEventListener('click', () => {
+      const url = document.getElementById('videoUrl').value;
+      if (url) {
+        loadOmakaseVideo(url);
+      }
+    });
   }
 
-  window.addEventListener('keydown', keyListener);
-  window.addEventListener('keydown', initializeVuMeter);
-  window.addEventListener('mousedown', initializeVuMeter);
-  domHelper.getById('addMarker').onclick = addMarker;
+  // Add keyboard controls
+  document.addEventListener('keydown', handleKeyPress);
 
-  initializePlayerEventListeners();
+  // Add size control functionality
+  initializeSizeControls();
 
-  window.omakasePlayer = omakasePlayer;
+  // Wait a brief moment for player to initialize
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  // Load default video
+  const defaultVideoUrl = 'https://demo.player.byomakase.org/data/sdr-ts/meridian_sdr.m3u8';
+  loadOmakaseVideo(defaultVideoUrl, urls[0].frameRate);
 });
+
+function handleKeyPress(event) {
+  // Only handle keyboard shortcuts if we have a video loaded
+  if (!omakasePlayer?.video) return;
+
+  // Prevent default behavior for these keys
+  if (['Space', 'ArrowLeft', 'ArrowRight'].includes(event.code)) {
+    event.preventDefault();
+  }
+
+  switch (event.code) {
+    case 'Space':
+      // Toggle play/pause
+      if (omakasePlayer.video.isPlaying()) {
+        pause();
+      } else {
+        play();
+      }
+      break;
+
+    case 'ArrowLeft':
+      // Previous frame
+      omakasePlayer.video.pause();
+      omakasePlayer.video.seekPreviousFrame().subscribe(() => {});
+      updatePlayPauseButtons('pause');
+      break;
+
+    case 'ArrowRight':
+      // Next frame
+      omakasePlayer.video.pause();
+      let frame = omakasePlayer.video.getCurrentFrame();
+      if (frame + 1 >= omakasePlayer.video.getVideo().totalFrames) {
+        frame = omakasePlayer.video.getVideo().totalFrames;
+      } else {
+        frame = frame + 1;
+      }
+      omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
+      updatePlayPauseButtons('pause');
+      break;
+  }
+}
+
+function updatePlayPauseButtons(state) {
+  const buttonPlay = document.getElementById('buttonPlay');
+  const buttonPause = document.getElementById('buttonPause');
+  
+  if (state === 'play') {
+    buttonPlay.style.display = 'none';
+    buttonPause.style.display = 'inline';
+  } else {
+    buttonPlay.style.display = 'inline';
+    buttonPause.style.display = 'none';
+  }
+}
+
+function play() {
+  omakasePlayer.video.play();
+  document.getElementById('buttonPlay').style.display = 'none';
+  document.getElementById('buttonPause').style.display = 'inline';
+}
+
+function pause() {
+  omakasePlayer.video.pause();
+  document.getElementById('buttonPlay').style.display = 'inline';
+  document.getElementById('buttonPause').style.display = 'none';
+}
 
 function createOmakasePlayer() {
   omakasePlayer = new omakase.OmakasePlayer({
@@ -109,18 +181,31 @@ function createOmakasePlayer() {
     style: {
       fontFamily: 'Arial',
     },
+    responsive: true,
   });
 }
 
 function loadOmakaseVideo(url, frameRate = 30) {
-  // Load video
   if (!url) {
     omakasePlayer.destroy();
-
     throw new Error('Video url is required!');
-  } else {
-    omakasePlayer.loadVideo(url, frameRate).subscribe();
   }
+  
+  // Clear any existing loading states
+  const playerDiv = document.getElementById('omakase-player');
+  if (playerDiv) {
+    playerDiv.style.backgroundImage = 'none';
+  }
+
+  // Load video and create timeline
+  omakasePlayer.loadVideo(url, frameRate).subscribe({
+    next: () => {
+      createOmakaseTimeline();
+    },
+    error: (err) => {
+      console.error('Error loading video:', err);
+    }
+  });
 }
 
 function createOmakaseTimeline() {
@@ -1198,19 +1283,26 @@ function createDropdownMenu() {
 }
 
 function initializePlayerEventListeners() {
+  if (!omakasePlayer) return;
+  
   omakasePlayer.on(omakasePlayer.EVENTS.OMAKASE_VIDEO_TIME_CHANGE, (event) => {
-    let inputFrameSeek = domHelper.getById('inputFrameSeek');
-    domHelper.setProperty(inputFrameSeek, 'innerHTML', event.frame);
+    // Update frame number
+    let inputFrameSeek = document.getElementById('inputFrameSeek');
+    if (inputFrameSeek) {
+      inputFrameSeek.innerHTML = event.frame;
+    }
 
-    let inputTimestamp = domHelper.getById('inputTimestamp');
-    domHelper.setProperty(inputTimestamp, event.currentTime.toFixed(3));
+    // Update seconds
+    let inputTimestamp = document.getElementById('inputTimestamp');
+    if (inputTimestamp) {
+      inputTimestamp.innerHTML = event.currentTime.toFixed(3);
+    }
 
-    let inputTimestampFormatted = domHelper.getById('inputTimestampFormatted');
-    domHelper.setProperty(
-      inputTimestampFormatted,
-      'innerHTML',
-      omakasePlayer.video.formatToTimecode(event.currentTime)
-    );
+    // Update timecode
+    let inputTimestampFormatted = document.getElementById('inputTimestampFormatted');
+    if (inputTimestampFormatted) {
+      inputTimestampFormatted.innerHTML = omakasePlayer.video.formatToTimecode(event.currentTime);
+    }
   });
 
   omakasePlayer.video.onSeeked$.subscribe((event) => {
@@ -1275,225 +1367,60 @@ function initializePlayerEventListeners() {
 }
 
 function initializePlayerControlButtons() {
-  let buttonPlay = domHelper.getById('buttonPlay');
-  buttonPlay.onclick = function () {
-    omakasePlayer.video.play();
-  };
+  const buttonPlay = document.getElementById('buttonPlay');
+  const buttonPause = document.getElementById('buttonPause');
+  const buttonBack = document.getElementById('back');
+  const buttonForward = document.getElementById('forward');
+  const buttonReplay = document.getElementById('buttonReplay');
 
-  let buttonPause = domHelper.getById('buttonPause');
-  buttonPause.onclick = function () {
-    omakasePlayer.video.pause();
-  };
+  if (buttonPlay) {
+    buttonPlay.onclick = function () {
+      omakasePlayer.video.play();
+      buttonPlay.style.display = 'none';
+      buttonPause.style.display = 'inline';
+    };
+  }
 
-  let buttonReplay = domHelper.getById('buttonReplay');
-  buttonReplay.onclick = function () {
-    omakasePlayer.video.seekToFrame(0).subscribe(() => {});
-  };
+  if (buttonPause) {
+    buttonPause.onclick = function () {
+      omakasePlayer.video.pause();
+      buttonPause.style.display = 'none';
+      buttonPlay.style.display = 'inline';
+    };
+  }
 
-  let buttonFfBack = domHelper.getById('ff-back');
-  buttonFfBack.onclick = function () {
-    omakasePlayer.video.pause();
+  if (buttonBack) {
+    buttonBack.onclick = function () {
+      omakasePlayer.video.pause();
+      buttonPause.style.display = 'none';
+      buttonPlay.style.display = 'inline';
+      omakasePlayer.video.seekPreviousFrame().subscribe(() => {});
+    };
+  }
 
-    let buttonReplay = domHelper.getById('buttonReplay');
-    domHelper.setStyle(buttonReplay, {display: 'none'});
+  if (buttonForward) {
+    buttonForward.onclick = function () {
+      omakasePlayer.video.pause();
+      buttonPause.style.display = 'none';
+      buttonPlay.style.display = 'inline';
+      let frame = omakasePlayer.video.getCurrentFrame();
+      if (frame + 1 >= omakasePlayer.video.getVideo().totalFrames) {
+        frame = omakasePlayer.video.getVideo().totalFrames;
+      } else {
+        frame = frame + 1;
+      }
+      omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
+    };
+  }
 
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'none'});
+  if (buttonReplay) {
+    buttonReplay.onclick = function () {
+      omakasePlayer.video.seekToFrame(0).subscribe(() => {});
+    };
+  }
 
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'inline'});
-
-    let frame = omakasePlayer.video.getCurrentFrame();
-    if (frame < 10) {
-      frame = 0;
-    } else {
-      frame = frame - 10;
-    }
-    omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
-  };
-
-  let buttonBack = domHelper.getById('back');
-  buttonBack.onclick = function () {
-    omakasePlayer.video.pause();
-
-    let buttonReplay = domHelper.getById('buttonReplay');
-    domHelper.setStyle(buttonReplay, {display: 'none'});
-
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'none'});
-
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'inline'});
-
-    omakasePlayer.video.seekPreviousFrame().subscribe(() => {});
-  };
-
-  let buttonFfForward = domHelper.getById('ff-forward');
-  buttonFfForward.onclick = function () {
-    omakasePlayer.video.pause();
-
-    let buttonReplay = domHelper.getById('buttonReplay');
-    domHelper.setStyle(buttonReplay, {display: 'none'});
-
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'none'});
-
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'inline'});
-
-    let frame = omakasePlayer.video.getCurrentFrame();
-    if (frame + 10 >= omakasePlayer.video.getVideo().totalFrames) {
-      frame = omakasePlayer.video.getVideo().totalFrames;
-    } else {
-      frame = frame + 10;
-    }
-    omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
-  };
-
-  let buttonForward = domHelper.getById('forward');
-  buttonForward.onclick = function () {
-    omakasePlayer.video.pause();
-
-    let buttonReplay = domHelper.getById('buttonReplay');
-    domHelper.setStyle(buttonReplay, {display: 'none'});
-
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'none'});
-
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'inline'});
-
-    let frame = omakasePlayer.video.getCurrentFrame();
-    if (frame + 1 >= omakasePlayer.video.getVideo().totalFrames) {
-      frame = omakasePlayer.video.getVideo().totalFrames;
-    } else {
-      frame = frame + 1;
-    }
-    omakasePlayer.video.seekToFrame(frame).subscribe(() => {});
-  };
-
-  // Playback rate toggle and indicator
-  let buttonPlayback = domHelper.getById('playback');
-  buttonPlayback.onclick = function () {
-    togglePlayback();
-  };
-
-  // Audio toggle and indicator
-  let buttonMute = domHelper.getById('mute');
-  let muted = false;
-  buttonMute.onclick = function () {
-    if (muted) {
-      domHelper.setStyle(buttonMute, {opacity: '1'});
-      omakasePlayer.video.unmute();
-      muted = false;
-    } else {
-      domHelper.setStyle(buttonMute, {opacity: '0.5'});
-      omakasePlayer.video.mute();
-      muted = true;
-    }
-  };
-  let buttonAudio = domHelper.getById('audio');
-  buttonAudio.onclick = function () {
-    toggleAudio();
-    domHelper.setProperty(buttonAudio, 'innerHTML', currentAudio);
-  };
-
-  // Captions toggle and indicator
-  let buttonSub = domHelper.getById('sub');
-  buttonSub.onclick = function () {
-    let activeTrack = omakasePlayer.subtitles.getActiveTrack();
-    if (activeTrack.hidden) {
-      omakasePlayer.subtitles.showActiveTrack();
-      domHelper.setStyle(buttonSub, {opacity: '1'});
-    } else {
-      omakasePlayer.subtitles.hideActiveTrack();
-      domHelper.setStyle(buttonSub, {opacity: '0.5'});
-    }
-  };
-  let buttonCaption = domHelper.getById('caption');
-  buttonCaption.onclick = function () {
-    toggleCaptions();
-    domHelper.setProperty(buttonCaption, 'innerHTML', currentCaption);
-  };
-
-  let buttonPlayheadToIn = domHelper.getById('playhead-to-in');
-  buttonPlayheadToIn.onclick = setPlayheadToInMarker;
-
-  let buttonPlayheadToOut = domHelper.getById('playhead-to-out');
-  buttonPlayheadToOut.onclick = setPlayheadToOutMarker;
-
-  let buttonInToPlayhead = domHelper.getById('in-to-playhead');
-  buttonInToPlayhead.onclick = setInMarkerToPlayhead;
-
-  let buttonOutToPlayhead = domHelper.getById('out-to-playhead');
-  buttonOutToPlayhead.onclick = setOutMarkertoPlayhead;
-
-  let buttonSafeZoneOn = domHelper.getById('safe-zone-on');
-  buttonSafeZoneOn.onclick = function () {
-    enableSafeZone(true);
-  };
-
-  let buttonSafeZoneOff = domHelper.getById('safe-zone-off');
-  buttonSafeZoneOff.onclick = function () {
-    enableSafeZone(false);
-  };
-
-  let videoElement = omakasePlayer.video.getHTMLVideoElement();
-
-  videoElement.addEventListener('enterpictureinpicture', (event) => {
-    if (event instanceof PictureInPictureEvent) {
-      togglePIP(true);
-      let op = domHelper.querySelector('.omakase-video-controls');
-      domHelper.setProperty(op, 'className', 'omakase-video-controls d-none');
-    } else {
-      alert('Picture in Picture mode failed');
-    }
-  });
-
-  videoElement.addEventListener('leavepictureinpicture', (event) => {
-    if (event instanceof PictureInPictureEvent) {
-      togglePIP(false);
-      let op = domHelper.querySelector('.omakase-video-controls');
-      domHelper.setProperty(op, 'className', 'omakase-video-controls');
-    } else {
-      alert('Picture in Picture mode failed');
-    }
-  });
-
-  videoElement.addEventListener('play', (event) => {
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'inline'});
-
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'none'});
-  });
-
-  videoElement.addEventListener('pause', (event) => {
-    let buttonPause = domHelper.getById('buttonPause');
-    domHelper.setStyle(buttonPause, {display: 'none'});
-
-    let buttonPlay = domHelper.getById('buttonPlay');
-    domHelper.setStyle(buttonPlay, {display: 'inline'});
-  });
-
-  let detachPIP = domHelper.getById('detach-pip');
-  detachPIP.onclick = async function () {
-    if (!domHelper.getPIP() && !videoElement.disablePictureInPicture && document.pictureInPictureEnabled) {
-      domHelper.requestPIP(videoElement);
-    }
-  };
-
-  let attachPIP = domHelper.getById('attach-pip');
-  attachPIP.onclick = async function () {
-    if (domHelper.getPIP() && !videoElement.disablePictureInPicture && document.pictureInPictureEnabled) {
-      domHelper.exitPIP();
-    }
-  };
-
-  let buttonFullscreen = domHelper.getById('full-screen');
-  buttonFullscreen.onclick = function () {
-    omakasePlayer.video.toggleFullscreen();
-  };
+  // Remove all duplicate button initialization code below this point
+  // The code was defining buttonBack, buttonForward etc multiple times
 }
 
 function togglePIP(isActive) {
@@ -1917,26 +1844,6 @@ function addZoomButtons() {
   });
 }
 
-function detectBrowser() {
-  let userAgent = (window.navigator && window.navigator.userAgent) || '';
-
-  let isAndroid = /Android/i.test(userAgent);
-  let isFirefox = /Firefox/i.test(userAgent);
-  let isEdge = /Edg/i.test(userAgent);
-  let isChromium = /Chrome/i.test(userAgent) || /CriOS/i.test(userAgent);
-  let isChrome = !isEdge && isChromium;
-  let isSafari = /Safari/i.test(userAgent) && !isChrome && !isAndroid && !isEdge;
-
-  let useChrome = 'For the best experience, please use Chrome browser.';
-  if (isFirefox) {
-    alert('Firefox browser is not supported. ' + useChrome);
-  } else if (isSafari) {
-    alert('Audio meter is not supported in Safari browser. ' + useChrome);
-  } else if (!isChrome) {
-    alert(useChrome);
-  }
-}
-
 function subscribeToComments(poiLane) {
   return poiLane.onVideoCueEvent$.subscribe((event) => {
     if (event.action === 'entry') {
@@ -2118,3 +2025,39 @@ const domHelper = {
     }
   },
 };
+
+function initializeSizeControls() {
+  const buttons = document.querySelectorAll('.size-button');
+  const videoContainer = document.getElementById('video-container');
+  const controls = document.getElementById('controls');
+  const playerDiv = document.getElementById('omakase-player');
+
+  buttons.forEach(button => {
+    button.addEventListener('click', () => {
+      // Remove active class from all buttons
+      buttons.forEach(btn => btn.classList.remove('active'));
+      
+      // Add active class to clicked button
+      button.classList.add('active');
+      
+      // Get size from data attribute
+      const size = button.dataset.size;
+      
+      // Remove all size classes
+      videoContainer.classList.remove('small', 'medium', 'large');
+      
+      // Add new size class
+      videoContainer.classList.add(size);
+
+      // Resize the player instance
+      if (omakasePlayer) {
+        setTimeout(() => {
+          omakasePlayer.resize();
+        }, 300); // Wait for transition to complete
+      }
+    });
+  });
+
+  // Set initial size to small
+  buttons[0].click();
+}

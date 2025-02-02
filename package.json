@@ -31,15 +31,15 @@
         "build:prod": "rm -rf dist && npm run build:workers && tsc --noEmit && vite build --debug"
     },
     "dependencies": {
-        "axios": "1.7.4",
-        "decimal.js": "10.4.3",
+        "axios": "^1.7.4",
+        "decimal.js": "^10.4.3",
         "eventemitter3": "5.0.0",
         "hls.js": "1.5.15",
         "konva": "8.3.14",
         "media-chrome": "^4.2.1",
         "node-webvtt": "1.9.4",
         "parse-hls": "^1.0.7",
-        "rxjs": "7.8.1",
+        "rxjs": "^7.8.1",
         "yoga-layout": "2.0.1",
         "zod": "3.23.8"
     },
